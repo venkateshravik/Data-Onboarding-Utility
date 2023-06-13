@@ -2,12 +2,14 @@
 Self Serve Data Onboarding Utility
 
 user :
-    login - authentication
+- login - authentication
+- bq connection via external client
+
     
 
 api : 
-    - bq connection
-    - bq 
+- bq connection
+- bq upload
 
 
 
