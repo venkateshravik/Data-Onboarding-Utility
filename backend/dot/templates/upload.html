@@ -1,0 +1,17 @@
+{% include 'home.html' %}
+
+
+{% if error %}
+<p>{{ error }}</p>
+{% endif %}
+
+{% if success %}
+<p>File uploaded successfully!</p>
+<p>{{message}}</p>
+{% endif %}
+
+<form action="" method="post" enctype="multipart/form-data">
+{% csrf_token %}
+<input type="file" name="csv_file" accept=".csv">
+<input type="submit" value="Upload">
+</form>
