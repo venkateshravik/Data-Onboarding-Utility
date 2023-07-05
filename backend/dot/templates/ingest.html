@@ -39,7 +39,8 @@
   </tbody>
 </table><br>
 </div>
-<form d-flex justify-content-center>
+<form class="justify-content-center" action="" method="post" enctype="multipart/form-data">
+    {% csrf_token %}
     <div class="mb-3 align-items-center">
         <label for="gcpProjectId" class="form-label">GCP Project ID :</label>
         <input type="email" class="form-control" id="gcpProjectId">
