@@ -1,0 +1,60 @@
+{% include 'home.html' %}
+
+
+{% block content %}
+<div class="p-2">
+<div class="table-responsive">
+<table class="table table-striped table-hover caption-top table-responsive">
+    <caption> Metadata : </caption>
+  <thead>
+    <tr>
+      <th scope="col">Col Name</th>
+      <th scope="col">Description</th>
+      <th scope="col">Data Type</th>
+      <th scope="col">Rule Type</th>
+      <th scope="col">Threshold</th>
+      <th scope="col">Defaults</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for i in table%}
+      <tr>
+        <td>{{ i.name }}</td>
+        <td>{{ i.description }}</td>
+        <td>{{ i.field_type }}</td>
+        <td>
+            <select class="form-select form-select-sm bg-warning" aria-label="Default select example">
+                <option selected>Range Check</option>
+                <option value="1">Null check</option>
+                <option value="2">Set check</option>
+                <option value="3">Regex check</option>
+                <option value="3">Uniqueness Check</option>
+                <option value="3">Statistic check</option>
+            </select>
+        </td>
+        <td>100%</td>
+        <td>{{ i.default_value_expression }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table><br>
+</div>
+<form d-flex justify-content-center>
+    <div class="mb-3 align-items-center">
+        <label for="gcpProjectId" class="form-label">GCP Project ID :</label>
+        <input type="email" class="form-control" id="gcpProjectId">
+    </div>
+    <div class="mb-3">
+        <label for="bigQueryDatasetName" class="form-label ">BigQuery Dataset Name :</label>
+        <input type="text" class="form-control" id="bigQueryDatasetName">
+    </div>
+    <div class="mb-3 align-items-center">
+        <label for="targetTable" class="form-label ">Target Table :</label>
+        <input type="text" class="form-control" id="targetTable">
+    </div>
+    <div class="text-center">
+    <button type="submit" class="btn btn-md btn-primary">Ingest</button></div>
+</form>
+</div>
+{% endblock %}
+
