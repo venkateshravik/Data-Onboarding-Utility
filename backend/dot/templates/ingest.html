@@ -120,21 +120,17 @@
 
       // Do something with the response data
       console.log(result)
-      alert('Success! preparing your data to run dataplex')
+      alert(`Success! preparing your data to run on dataplex`)
 
     } else {
-      // The request failed
-      // Handle the error
       alert('there is some error')
     }
   }
 
   let optionValue = document.querySelectorAll('.option-value');
   let table_len = "{{table_len}}"
-  const checks = ['Range_Check','Null_Check','Set_Check','Regex_Check','Uniqueness_Check','Statistic_Check']
+  const checks = ['range_expectation','non_null_expectation','set_expectation','regex_expectation','uniqueness_expectation','statistic_range_expectation']
   let inputData = []
-  // inputField.classList.add('d-none')
-  // console.log(inputField)
   if (optionValue){
     
     optionValue.forEach((element,index) => {
