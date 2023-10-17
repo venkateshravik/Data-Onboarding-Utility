@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse , HttpResponseRedirect
+from django.contrib.auth.decorators import login_required
 from google.cloud import bigquery
 from django.conf import settings
 from django.urls import reverse
@@ -20,13 +21,13 @@ TABLE_ID = "gcpsubhrajyoti-test-project.dot_testing.dot_result"
 
 
 # Create your views here.
-
+@login_required
 def home_view(request):
     context = {}
     return render(request,'home.html',context)
 
 
-
+@login_required
 def upload_csv(request):
 
     # Check if the form has been submitted
@@ -265,6 +266,7 @@ DATASET = "dot_testing"
 PROJECT_ID = "gcpsubhrajyoti-test-project"
 LOCATION = "us-central1"
 JOB_NAME = ""
+@login_required
 def ingest_form(request):
     jsonStr = request.body.decode("utf-8")
     result = json.loads(jsonStr)
@@ -289,7 +291,7 @@ def ingest_form(request):
         print(e)
         return JsonResponse({'error':str(e),'status':400})
     
-
+@login_required
 def dataplex_job_status(request):
     client = dataplex_v1.DataScanServiceClient()
     status = "PENDING"
@@ -304,7 +306,5 @@ def dataplex_job_status(request):
         "state":job.state,
         "res":str(job)[-37:]
     }
-    print(job.state)
-    print(job.state)
     print(job.state)
     return render(request,"dataplexJobStatus.html",{"status":stats})

@@ -19,5 +19,6 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include("bqconnector.urls") )
+    path('', include("bqconnector.urls") ),
+    path('accounts/', include('allauth.urls'))
 ]
