@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 from google.cloud import bigquery
 from django.conf import settings
 from django.urls import reverse
-from bqconnector.models import JobIdStore
+from bqconnector.models import JobIdStore , BigqueryInfo
 import os
 import csv
 import json
@@ -17,14 +17,43 @@ from time import sleep
 import re
 ####
 
-TABLE_ID = "gcpsubhrajyoti-test-project.dot_testing.dot_result"
+# TABLE_ID = "gcpsubhrajyoti-test-project.dot_testing.dot_result"
 
+# SOURCE_TABLE_NAME = "dot_result"
+# RESULT_TABLE_NAME = "dot-target-table"
+# DATASET = "dot_testing"
+PROJECT_ID = "gcpsubhrajyoti-test-project"
+LOCATION = "us-central1"
+JOB_NAME = ""
 
 # Create your views here.
 @login_required
 def home_view(request):
     context = {}
     return render(request,'home.html',context)
+
+# create a separate dataset for every upload
+def create_bigquery_dataset(dataset_name):
+    dataset_id = PROJECT_ID + '.' + dataset_name
+    client = bigquery.Client()
+    dataset = bigquery.Dataset(dataset_id)
+    dataset.location = "US"
+    client.create_dataset(dataset)
+
+
+#create 3 tables stg , source , target
+def create_bigquery_tables(table_id, dataset_id):
+    client = bigquery.Client(project= PROJECT_ID)
+
+
+    # Create an empty table reference.
+    table_ref = client.dataset(dataset_id).table(table_id)
+
+    # Create the empty table.
+    table = bigquery.Table(table_ref)
+    return client.create_table(table)
+
+
 
 
 @login_required
@@ -33,12 +62,34 @@ def upload_csv(request):
     # Check if the form has been submitted
     if request.method == "POST":
         file = request.FILES['csv_file']
+        file_name = (file.name).split('.')[0]
         file_path = os.path.join(settings.MEDIA_ROOT, file.name)
 
         with open(file_path, "wb") as f:
             f.write(file.file.read())
 
         client = bigquery.Client()
+
+        #creating new dataset
+        
+        file_name = re.sub("[^A-Za-z0-9]", "", file_name)
+        dataset_id = file_name + '_dst'
+        create_bigquery_dataset(dataset_id)
+
+        #creating new tables
+        source_table_id = file_name[:20] + '_src'
+        target_table_id = file_name[:20] + '_tgt'
+        temp_source_tbl = create_bigquery_tables(source_table_id,dataset_id)
+        temp_result_tbl = create_bigquery_tables(target_table_id, dataset_id)
+        # bigquery_file_name, source_table_name , target_table_name , dataset_id ,
+        TABLE_ID = temp_source_tbl
+
+        #create the database object 
+        BigqueryInfo.objects.create(bigquery_file_name=file_name, 
+        dataset_name=dataset_id,source_table_id=temp_source_tbl,target_table_id=temp_result_tbl)
+
+
+
         table_id = TABLE_ID
         job_config = bigquery.LoadJobConfig(
             source_format=bigquery.SourceFormat.CSV, skip_leading_rows=1, autodetect=True,
@@ -165,7 +216,7 @@ def execute(rules_config: list, project_id: str, dataset: str, source_table_name
 
 def get_table_data(request):
     client = bigquery.Client()
-    table_id = TABLE_ID
+    table_id = BigqueryInfo.objects.last().source_table_id
     table = client.get_table(table_id)
     schema = table.schema
     table_len = len(table.schema)
@@ -176,7 +227,7 @@ def get_table_data(request):
 
 def get_col_name_for_ingest_form():
     client = bigquery.Client()
-    table_id = TABLE_ID
+    table_id = BigqueryInfo.objects.last().source_table_id
     table = client.get_table(table_id)
     column_names = []
     for schema_field in table.schema:
@@ -247,7 +298,7 @@ modfied the data and feed into the source table
 #TODO
 def update_default_value_and_description(description_list,default_list):
     client = bigquery.Client()
-    table_id = TABLE_ID
+    table_id = BigqueryInfo.objects.last().source_table_id
     table = client.get_table(table_id)
     column_names = []
     count = 0
@@ -260,12 +311,7 @@ def update_default_value_and_description(description_list,default_list):
 
 
 
-SOURCE_TABLE_NAME = "dot_result"
-RESULT_TABLE_NAME = "dot-target-table"
-DATASET = "dot_testing"
-PROJECT_ID = "gcpsubhrajyoti-test-project"
-LOCATION = "us-central1"
-JOB_NAME = ""
+
 @login_required
 def ingest_form(request):
     jsonStr = request.body.decode("utf-8")
@@ -280,11 +326,16 @@ def ingest_form(request):
     col_name = get_col_name_for_ingest_form()
     rules = get_rules_config(rules_config_list,col_name)
 
-
-
     try:
         #put the parameters in the execute block 
-        JOB_NAME = execute(rules, PROJECT_ID, DATASET, SOURCE_TABLE_NAME, RESULT_TABLE_NAME,LOCATION)
+        temp_source_tbl = BigqueryInfo.objects.last().source_table_id or ""
+        temp_result_tbl = BigqueryInfo.objects.last().target_table_id or ""
+        print(temp_result_tbl)
+        SOURCE_TABLE_NAME = temp_source_tbl.split('.')[2]
+        RESULT_TABLE_NAME = temp_result_tbl.split('.')[2]
+        DATASET = BigqueryInfo.objects.last().dataset_name 
+        DATAPLEX_JOB_METADATA_TABLE_ID= "dataplex_job_metadata"
+        JOB_NAME = execute(rules, PROJECT_ID, DATASET, SOURCE_TABLE_NAME, DATAPLEX_JOB_METADATA_TABLE_ID,LOCATION)
         JobIdStore.objects.create(name = JOB_NAME)
         return JsonResponse({'msg':'success','job_name':JOB_NAME})
     except Exception as e:
