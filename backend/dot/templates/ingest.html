@@ -1,0 +1,206 @@
+{% include 'home.html' %}
+
+
+{% block content %}
+<div class="p-2">
+<div class="table-responsive">
+<form class="justify-content-center" enctype="multipart/form-data">
+    {% csrf_token %}
+        <table class="table table-striped table-hover caption-top table-responsive">
+            <caption> Metadata : </caption>
+          <thead>
+            <tr>
+              <th scope="col">Col Name</th>
+              <th scope="col">Description</th>
+              <th scope="col">Data Type</th>
+              <th scope="col">Rule Type</th>
+              <th scope="col">Attributes</th>
+              <th scope="col">Threshold</th>
+              <th scope="col">Defaults</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for i in table%}
+              <tr>
+                <td>{{ i.name }}</td>
+                <td><input type="text" class="description-{{forloop.counter0}} desc-value" value={{ i.description }} /></td>
+                <td>{{ i.field_type }}</td>
+                <td>
+                    <select id="option-value" name="option" class="form-control form-control-sm bg-warning option-value" aria-label="Default select example">
+                        <option>select an option</option>
+                        <option value="1">Range Check</option>
+                        <option value="2">Null check</option>
+                        <option value="3">Set check</option>
+                        <option value="4">Regex check</option>
+                        <option value="5">Uniqueness Check</option>
+                        <option value="6">Statistic check</option>
+                    </select>
+                </td>
+                <td>
+              <div id="input-1" class="form-group d-none row-1-{{forloop.counter0}} {{forloop.counter0}}-display-field">
+                <input type="number" id="min-value" name="min-value" placeholder="min value">
+                <input type="number" id="max-value" name="max-value" placeholder="max value">
+                <div><input type="radio" id="ignore-null" name="ignore-null">Ignore Nulls</div>
+                <div><input type="radio" id="strict-min" name="strict-min">strict min</div>
+                <div><input type="radio" id="strict-max" name="strict-max">strict max</div>
+              </div>
+              <div id="input-2" class="form-group d-none row-2-{{forloop.counter0}} {{forloop.counter0}}-display-field">
+                <input type="text" id="default-value-entry" name="default-value-entry" placeholder="default values for entry ">
+              </div>
+              <div id="input-3" class="form-group d-none row-3-{{forloop.counter0}} {{forloop.counter0}}-display-field">
+                <div><input type="radio" id="ignore-null" name="ignore-null">Ignore Nulls</div>
+                <input type="text" id="set-of-values" name="set-of-values" placeholder="Enter comma separated set of values Eg : {A-Z},{0-9}">
+              </div>
+              <div id="input-4" class="form-group d-none row-4-{{forloop.counter0}} {{forloop.counter0}}-display-field">
+                <input type="text" id="regex-check" name="regex-check" placeholder="Pls provide a regular expression to check the values against. Eg: YYYY-MM-DD for timestamp">
+              </div>
+              <div id="input-5" class="form-group d-none row-5-{{forloop.counter0}} {{forloop.counter0}}-display-field">
+                <div><input type="radio" id="ignore-null" name="ignore-null">Ignore Nulls</div>
+              </div>
+              <div id="input-6" class="form-group d-none row-6-{{forloop.counter0}} {{forloop.counter0}}-display-field">
+                <input type="number" id="min-value" name="min-value" placeholder="min value">
+                <input type="number" id="max-value" name="max-value" placeholder="max value">
+                <div><input type="radio" id="strict-min" name="strict-min">strict min</div>
+                <div><input type="radio" id="strict-max" name="strict-max">strict max</div>
+              </div>
+                
+                </td>
+                <td>100%</td>
+                <td><input type="text" class="default-value" value={{ i.default_value_expression }} /></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <br>
+        </div>
+            <div class="mb-3 align-items-center">
+                <label for="gcpProjectId" class="form-label">GCP Project ID :</label>
+                <input type="email" class="form-control" id="gcpProjectId">
+            </div>
+            <div class="mb-3">
+                <label for="bigQueryDatasetName" class="form-label ">BigQuery Dataset Name :</label>
+                <input type="text" class="form-control" id="bigQueryDatasetName">
+            </div>
+            <div class="mb-3 align-items-center">
+                <label for="targetTable" class="form-label ">Target Table :</label>
+                <input type="text" class="form-control" id="targetTable">
+            </div>
+            <div class="text-center">
+
+          <button type="submit" class="btn btn-md btn-primary sbmt-btn">Ingest</button></div>
+</form>
+</div>
+{% endblock %}
+
+<script type="text/javascript">
+  const csrf_token = "{{ csrf_token }}";
+  //making post request to the ingest_form function
+
+  async function postData(data) {
+
+
+    // Convert the object to JSON
+    const jsonStr = JSON.stringify(data);
+
+    // Make a POST request to the `/my-view/` endpoint with the JSON body
+    const response = await fetch("/ingest/form", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrf_token
+      },
+      mode: 'same-origin',
+      body: jsonStr,
+    });
+
+    // Check the response status code
+    if (response.status === 200) {
+      // The request was successful
+      const result = await response.json();
+
+      // Do something with the response data
+      console.log(result)
+      alert(`Success! preparing your data to run on dataplex`)
+
+    } else {
+      alert('there is some error')
+    }
+  }
+
+  let optionValue = document.querySelectorAll('.option-value');
+  let table_len = "{{table_len}}"
+  const checks = ['range_expectation','non_null_expectation','set_expectation','regex_expectation','uniqueness_expectation','statistic_range_expectation']
+  let inputData = []
+  if (optionValue){
+    
+    optionValue.forEach((element,index) => {
+      element.addEventListener('change',function(){
+        let inputValue = element.value;
+        let inputField = document.getElementsByClassName(`${index}-display-field`)
+        for(let i=0;i<inputField.length;i++){
+          inputField[i].classList.add('d-none')
+        }
+        let selectorOption = document.querySelector(`.row-${inputValue}-${index}`)
+        selectorOption.classList.remove('d-none')
+      })
+    })
+  }
+
+  let sbmt = document.getElementsByClassName('sbmt-btn');
+  let descriptionValue = document.querySelectorAll('.desc-value');
+  let defaultValue = document.querySelectorAll('.default-value');
+  let gcpProjectId = document.getElementById('gcpProjectId');
+  let bigQueryDatasetName = document.getElementById('bigQueryDatasetName');
+  let targetTable = document.getElementById('targetTable');
+  let ruleTypeInput = {};
+  let descInput = {};
+  let defaultInput = {};
+  let gcpInput = {};
+  let data = {};
+  sbmt[0].addEventListener('click',function(e){
+      e.preventDefault();
+      optionValue.forEach((el,index) => {
+        let val = el.value;
+        let collectField = document.querySelector(`.row-${val}-${index}`);
+        if(collectField !== null ){
+          let inputs = document.querySelectorAll(`.row-${val}-${index} input`)
+          let tempValueArr = []
+          for(let i = 0; i < inputs.length; i++){
+          if(inputs[i].type === 'radio'){
+            tempValueArr.push(inputs[i].checked);
+          }
+          else{
+            tempValueArr.push(inputs[i].value);
+          }
+          }
+          let checkValue = checks[val-1];
+          let obj = {}
+          obj = {...obj,[checkValue]:tempValueArr }
+          ruleTypeInput[index] = obj;
+        }else{
+          ruleTypeInput[index] = {'select an option':null};
+        }
+      })
+      descriptionValue.forEach((el,index) => {
+        descInput[index] = el.value;
+      })
+      defaultValue.forEach((el,index) => {
+        defaultInput[index] = el.value;
+      })
+      gcpInput['gcpProjectId'] = gcpProjectId.value;
+      gcpInput['bigQueryDatasetName'] = bigQueryDatasetName.value;
+      gcpInput['targetTable'] = targetTable.value;
+      data['describeInput'] = descInput;
+      data['defaultInput'] = defaultInput;
+      data['gcpInput'] = gcpInput;
+      data['ruleTypeInput'] = ruleTypeInput;
+
+      //making the postData function call
+      //to django views.py
+      postData(data);
+  })
+  let optionSelect = document.getElementById("option-value");
+
+
+
+</script>

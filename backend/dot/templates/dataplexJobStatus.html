@@ -1,0 +1,29 @@
+{% include 'home.html' %}
+
+<div class="container align-items-center">
+    <div class="card shadow-lg w-25 my-3">
+        <div class="card-header">Data Scan Job Name</div>
+            <div class="card-body">{{status.scan_job_name}}</div>
+    </div>
+    <div class="card shadow-lg w-25 my-3">
+        <div class="card-header">Job start_time</div>
+                <div class="card-body">{{status.start_time}}</div>
+    </div>
+    <div class="card shadow-lg w-25 my-3">
+        <div class="card-header">Job end_time</div>
+                <div>{{status.end_time}}</div>
+    </div>
+    <div class="card shadow-lg w-25 my-3">
+        <div class="card-header">Job state</div>
+                {% if status.state == 4 %}
+                <div class=" card-body bg-success">SUCCEEDED</div>
+                {% else %}
+                <div class="card-body bg-danger">{{status.res}}</div>
+                {% endif %}
+        </div>
+    
+    </div>
+
+
+</div>
+

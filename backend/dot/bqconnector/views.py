@@ -1,0 +1,362 @@
+from django.shortcuts import render
+from django.http import JsonResponse, HttpResponse , HttpResponseRedirect
+from django.contrib.auth.decorators import login_required
+from google.cloud import bigquery
+from django.conf import settings
+from django.urls import reverse
+from bqconnector.models import JobIdStore , BigqueryInfo
+import os
+import csv
+import json
+
+#dq scan 
+from google.cloud import dataplex_v1
+from google.cloud.dataplex_v1.types import DataQualityRule
+from google.api_core.exceptions import NotFound
+from time import sleep
+import re
+####
+
+# TABLE_ID = "gcpsubhrajyoti-test-project.dot_testing.dot_result"
+
+# SOURCE_TABLE_NAME = "dot_result"
+# RESULT_TABLE_NAME = "dot-target-table"
+# DATASET = "dot_testing"
+PROJECT_ID = "gcpsubhrajyoti-test-project"
+LOCATION = "us-central1"
+JOB_NAME = ""
+
+# Create your views here.
+@login_required
+def home_view(request):
+    context = {}
+    return render(request,'home.html',context)
+
+# create a separate dataset for every upload
+def create_bigquery_dataset(dataset_name):
+    dataset_id = PROJECT_ID + '.' + dataset_name
+    client = bigquery.Client()
+    dataset = bigquery.Dataset(dataset_id)
+    dataset.location = "US"
+    client.create_dataset(dataset)
+
+
+#create 3 tables stg , source , target
+def create_bigquery_tables(table_id, dataset_id):
+    client = bigquery.Client(project= PROJECT_ID)
+
+
+    # Create an empty table reference.
+    table_ref = client.dataset(dataset_id).table(table_id)
+
+    # Create the empty table.
+    table = bigquery.Table(table_ref)
+    return client.create_table(table)
+
+
+
+
+@login_required
+def upload_csv(request):
+
+    # Check if the form has been submitted
+    if request.method == "POST":
+        file = request.FILES['csv_file']
+        file_name = (file.name).split('.')[0]
+        file_path = os.path.join(settings.MEDIA_ROOT, file.name)
+
+        with open(file_path, "wb") as f:
+            f.write(file.file.read())
+
+        client = bigquery.Client()
+
+        #creating new dataset
+        
+        file_name = re.sub("[^A-Za-z0-9]", "", file_name)
+        dataset_id = file_name + '_dst'
+        create_bigquery_dataset(dataset_id)
+
+        #creating new tables
+        source_table_id = file_name[:20] + '_src'
+        target_table_id = file_name[:20] + '_tgt'
+        temp_source_tbl = create_bigquery_tables(source_table_id,dataset_id)
+        temp_result_tbl = create_bigquery_tables(target_table_id, dataset_id)
+        # bigquery_file_name, source_table_name , target_table_name , dataset_id ,
+        TABLE_ID = temp_source_tbl
+
+        #create the database object 
+        BigqueryInfo.objects.create(bigquery_file_name=file_name, 
+        dataset_name=dataset_id,source_table_id=temp_source_tbl,target_table_id=temp_result_tbl)
+
+
+
+        table_id = TABLE_ID
+        job_config = bigquery.LoadJobConfig(
+            source_format=bigquery.SourceFormat.CSV, skip_leading_rows=1, autodetect=True,
+        )
+
+        with open(file_path, "rb") as source_file:
+            job = client.load_table_from_file(source_file, table_id, job_config=job_config)
+
+        job.result()  # Waits for the job to complete.
+        table = client.get_table(table_id)  # Make an API request.
+        
+        msg = "Loaded {} rows and {} columns to {}".format(
+                table.num_rows, len(table.schema), table_id
+            )
+        return render(request, "upload.html", {"success": True,"message":msg})
+    else:
+        return render(request, "upload.html")
+
+
+############################################################################################
+#dq jobs
+############################################################################################
+def create_data_scan(client: dataplex_v1.DataScanServiceClient, 
+                     data_scan_name: str, 
+                     rules_config: list, 
+                     project_id: str,
+                     source_table: str, 
+                     results_table: str,
+                     locations: str):
+    data_scan = dataplex_v1.DataScan()
+    data_scan.data_quality_spec.rules=[]
+    for rule in rules_config:
+        dq_rule = DataQualityRule()
+        dq_rule.column = rule['column']
+        dq_rule.dimension = rule['dimension']
+        if rule['dq_check_name'] == "range_expectation":
+            dq_rule.range_expectation = DataQualityRule.RangeExpectation()
+            if 'min_value' in rule['dq_check_properties']:
+                dq_rule.range_expectation.min_value = rule['dq_check_properties']['min_value']
+            if 'max_value' in rule['dq_check_properties']:
+                dq_rule.range_expectation.max_value = rule['dq_check_properties']['max_value']
+                #TODO add strict min max
+        elif rule['dq_check_name'] == "non_null_expectation":
+            dq_rule.non_null_expectation = DataQualityRule.NonNullExpectation()
+        elif rule['dq_check_name'] == "set_expectation":
+            dq_rule.set_expectation = DataQualityRule.SetExpectation()
+            dq_rule.set_expectations.values =  rule['dq_check_properties']['values']
+        elif rule['dq_check_name'] == "regex_expectation":
+            dq_rule.regex_expectation = DataQualityRule.RegexExpectation()
+            dq_rule.set_expectations.regex =  rule['dq_check_properties']['regex']
+        elif rule['dq_check_name'] == "uniqueness_expectation":
+            dq_rule.uniqueness_expectation = DataQualityRule.UniquenessExpectation()
+        elif rule['dq_check_name'] == "statistic_range_expectation":
+            dq_rule.statistic_range_expectation = DataQualityRule.StatisticRangeExpectation()
+            if 'statistic' in rule['dq_check_properties']:
+                dq_rule.range_expectation.statistic = dq_rule.statistic_range_expectation.ColumnStatistic(rule['dq_check_properties']['statistic'])
+            if 'min_value' in rule['dq_check_properties']:
+                dq_rule.range_expectation.min_value = rule['dq_check_properties']['min_value']
+            if 'max_value' in rule['dq_check_properties']:
+                dq_rule.range_expectation.max_value = rule['dq_check_properties']['max_value'] 
+        else:
+            print('Incorrect Rule type')
+            continue
+        data_scan.data_quality_spec.rules.append(dq_rule)
+    
+    # data_scan.data_quality_spec.post_scan_actions = PostScanActions()
+    # data_scan.data_quality_spec.post_scan_actions.bigquery_export = PostScanActions.BigQueryExport()
+    data_scan.data_quality_spec.post_scan_actions.bigquery_export.results_table = results_table
+
+    data_scan.data.resource = source_table
+    
+    request = dataplex_v1.CreateDataScanRequest(
+        parent=f"projects/{project_id}/locations/{locations}",
+        data_scan=data_scan,
+        data_scan_id=data_scan_name,
+    )
+
+    # Make the request
+    operation = client.create_data_scan(request=request)
+    # print("Waiting for data scan object to be created...")
+    data_scan_obj = operation.result()
+    # print(data_scan_obj)
+    return data_scan_obj
+
+
+
+
+
+def get_data_scan_unique_name(table_name):
+    regex = re.compile(r"[^a-zA-Z0-9-]")
+    table_name_wo_spcl_char = regex.sub("-", table_name)
+    return f"dq-check-{table_name_wo_spcl_char.lower()}"
+    
+
+
+def execute(rules_config: list, project_id: str, dataset: str, source_table_name: str, results_table_name: str, locations:str = "us-central1"):
+    dataplex_client = dataplex_v1.DataScanServiceClient()
+    source_table = f"//bigquery.googleapis.com/projects/{project_id}/datasets/{dataset}/tables/{source_table_name}"
+    results_table =f"//bigquery.googleapis.com/projects/{project_id}/datasets/{dataset}/tables/{results_table_name}"
+    data_scan_unique_name = get_data_scan_unique_name(source_table_name)
+    try:
+        data_scan_obj = dataplex_client.get_data_scan(
+        name=f"projects/{project_id}/locations/{locations}/dataScans/{data_scan_unique_name}"
+        )
+        # print(f"Data scan object exists already as {data_scan_unique_name}")
+        # TO-DO update dq check config when rules are changed by the user for the source table
+        # data_scan_rules = str(data_scan_obj.data_profile_spec)
+        # print(f"data_scan_rules: {data_scan_rules}")
+        # input_rules = str(rules_config)
+        # print(f"input_rules: {input_rules}")
+        # if data_scan_rules!= input_rules:
+        #     update_data_scan(dataplex_client, data_scan_unique_name, rules_config)
+    except NotFound as e:
+        # print(e)
+        # print("Not found: creating now")
+        data_scan_obj = create_data_scan(dataplex_client, data_scan_unique_name, rules_config, project_id, source_table, results_table, locations)
+    data_scan_name = data_scan_obj.name
+    # print(f"Triggering data scan run for the object {data_scan_unique_name}")
+    job_response = dataplex_client.run_data_scan(name=data_scan_name)
+    # print(f"job creation resp: {job_response}")
+    return job_response.job.name
+
+
+#############################################################
+
+def get_table_data(request):
+    client = bigquery.Client()
+    table_id = BigqueryInfo.objects.last().source_table_id
+    table = client.get_table(table_id)
+    schema = table.schema
+    table_len = len(table.schema)
+    return render(request, "ingest.html", {"success": True,"table":schema,"table_len":range(table_len)})
+
+
+
+
+def get_col_name_for_ingest_form():
+    client = bigquery.Client()
+    table_id = BigqueryInfo.objects.last().source_table_id
+    table = client.get_table(table_id)
+    column_names = []
+    for schema_field in table.schema:
+        column_names.append(schema_field.name)
+    return column_names 
+
+def get_rules_config(rules_config_list,col_name):
+    rules = []
+    dimension = [ "VALIDITY", "COMPLETENESS","VALIDITY","VALIDITY","UNIQUENESS", "VALIDITY"]
+    for i in range(len(col_name)):
+        column = col_name[i]
+        check_obj = rules_config_list[str(i)]
+        temp_rules_config_list = {}
+        temp_rules_config_list['column']=column
+        if "range_expectation" in check_obj :
+            min_value = check_obj['range_expectation'][0]
+            max_value = check_obj['range_expectation'][1]
+            ignore_null = check_obj['range_expectation'][2]
+            strict_min_enabled = check_obj['range_expectation'][3]
+            strict_max_enabled = check_obj['range_expectation'][4]
+            temp_rules_config_list['dq_check_name'] = "range_expectation"
+            temp_rules_config_list['dq_check_properties'] = {"min_value":min_value,"max_value":max_value,"strict_min_enabled":strict_min_enabled,"strict_max_enabled":strict_max_enabled}
+            temp_rules_config_list['dimension'] = dimension[0]
+
+        elif 'non_null_expectation' in check_obj:
+            default_value = check_obj['non_null_expectation'][0]
+            temp_rules_config_list['dq_check_name'] = 'non_null_expectation'
+            temp_rules_config_list['dq_check_properties'] = {"default_value":default_value}
+            temp_rules_config_list['dimension'] = dimension[1]
+
+        elif 'set_expectation' in check_obj:
+            ignore_null = check_obj['set_expectation'][0]
+            values = check_obj['set_expectation'][1]
+            temp_rules_config_list['dq_check_name']='set_expectation'
+            temp_rules_config_list['dq_check_properties'] = {"ignore_null":ignore_null,"values":values}
+            temp_rules_config_list['dimension']=dimension[2]
+
+        elif 'regex_expectation' in check_obj:#raise error if it's not a regular expression
+            regex = check_obj['regex_expectation'][0]
+            temp_rules_config_list['dq_check_name']='regex_expectation'
+            temp_rules_config_list['dq_check_properties']={"regex":regex}
+            temp_rules_config_list['dimension']=dimension[3]
+
+        elif "uniqueness_expectation" in check_obj:
+           ignore_null = check_obj["uniqueness_expectation"][0]
+           temp_rules_config_list['dq_check_name']="uniqueness_expectation"
+           temp_rules_config_list['dq_check_properties']={"ignore_null":ignore_null}
+           temp_rules_config_list['dimension']=dimension[4]
+
+        elif 'statistic_range_expectation' in check_obj:
+            min_value = check_obj['statistic_range_expectation'][0]
+            max_value = check_obj['statistic_range_expectation'][1]
+            strict_min_enabled = check_obj['strict_min_enabled'][2]
+            strict_max_enabled = check_obj['strict_max_enabled'][3]
+            temp_rules_config_list['dq_check_name']='statistic_range_expectation'
+            temp_rules_config_list['dq_check_properties']={'min_value':min_value,'max_value':max_value,'strict_min_enabled':strict_min_enabled,'strict_max_enabled':strict_max_enabled}
+            temp_rules_config_list['dimension']=dimension[5]
+        else :
+            temp_rules_config_list['dimension'] = None
+            temp_rules_config_list['dq_check_name']=None
+            temp_rules_config_list['dq_check_properties']=None
+        rules.append(temp_rules_config_list)
+    return rules
+
+'''
+modfied the data and feed into the source table
+'''
+#TODO
+def update_default_value_and_description(description_list,default_list):
+    client = bigquery.Client()
+    table_id = BigqueryInfo.objects.last().source_table_id
+    table = client.get_table(table_id)
+    column_names = []
+    count = 0
+    for schema_field in table.schema:
+        print(schema_field)
+        schema_field.description = description_list[count]
+        schema_field.default_value = default_list[count]
+        count = count + 1
+    pass
+
+
+
+
+@login_required
+def ingest_form(request):
+    jsonStr = request.body.decode("utf-8")
+    result = json.loads(jsonStr)
+    #print(result)
+    description_list = result['describeInput']
+    default_list = result['defaultInput']
+    # update_default_value_and_description(description_list,default_list)
+    rules_config_list = result['ruleTypeInput']
+    gcp_input_list = result['gcpInput']
+    project_id = gcp_input_list['gcpProjectId']
+    col_name = get_col_name_for_ingest_form()
+    rules = get_rules_config(rules_config_list,col_name)
+
+    try:
+        #put the parameters in the execute block 
+        temp_source_tbl = BigqueryInfo.objects.last().source_table_id or ""
+        temp_result_tbl = BigqueryInfo.objects.last().target_table_id or ""
+        print(temp_result_tbl)
+        SOURCE_TABLE_NAME = temp_source_tbl.split('.')[2]
+        RESULT_TABLE_NAME = temp_result_tbl.split('.')[2]
+        DATASET = BigqueryInfo.objects.last().dataset_name 
+        DATAPLEX_JOB_METADATA_TABLE_ID= "dataplex_job_metadata"
+        JOB_NAME = execute(rules, PROJECT_ID, DATASET, SOURCE_TABLE_NAME, DATAPLEX_JOB_METADATA_TABLE_ID,LOCATION)
+        JobIdStore.objects.create(name = JOB_NAME)
+        return JsonResponse({'msg':'success','job_name':JOB_NAME})
+    except Exception as e:
+        print(e)
+        return JsonResponse({'error':str(e),'status':400})
+    
+@login_required
+def dataplex_job_status(request):
+    client = dataplex_v1.DataScanServiceClient()
+    status = "PENDING"
+    temp = JobIdStore.objects.last().name or ""
+    job = client.get_data_scan_job(
+        name=  temp
+    )
+    stats = {
+        "scan_job_name": job.name,
+        "start_time":job.start_time,
+        "end_time":job.end_time,
+        "state":job.state,
+        "res":str(job)[-37:]
+    }
+    print(job.state)
+    return render(request,"dataplexJobStatus.html",{"status":stats})

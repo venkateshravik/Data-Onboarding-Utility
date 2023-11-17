@@ -1,0 +1,6 @@
+env
+db.sqlite3
+../../dot-env
+__pycache__/
+migrations/__pycache__/
+./bqconnector/migration
