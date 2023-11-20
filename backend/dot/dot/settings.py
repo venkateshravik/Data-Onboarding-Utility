@@ -105,13 +105,16 @@ LOGIN_REDIRECT_URL = '/'
 #     }
 # }
 
+# Get HOST value from environment variable or 'localhost' as a default
+DB_HOST = os.environ.get('DB_HOST', 'localhost')
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
         'NAME': 'dotproject',
         'USER': 'dotprojectuser',
         'PASSWORD': 'dotuser@5478',
-        'HOST': 'localhost',
+        'HOST': DB_HOST,
         'PORT': '',
     }
 }
@@ -185,3 +188,5 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8000",
     "http://127.0.0.1:5500",
 ]
+
+CSRF_TRUSTED_ORIGINS = ['https://*.run.app','https://*.127.0.0.1']
