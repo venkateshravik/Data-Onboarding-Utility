@@ -71,39 +71,41 @@ def upload_csv(request):
         client = bigquery.Client()
 
         #creating new dataset
-        
-        file_name = re.sub("[^A-Za-z0-9]", "", file_name)
-        dataset_id = file_name + '_dst'
-        create_bigquery_dataset(dataset_id)
+        try:
+            file_name = re.sub("[^A-Za-z0-9]", "", file_name)
+            dataset_id = file_name + '_dst'
+            create_bigquery_dataset(dataset_id)
 
-        #creating new tables
-        source_table_id = file_name[:20] + '_src'
-        target_table_id = file_name[:20] + '_tgt'
-        temp_source_tbl = create_bigquery_tables(source_table_id,dataset_id)
-        temp_result_tbl = create_bigquery_tables(target_table_id, dataset_id)
-        # bigquery_file_name, source_table_name , target_table_name , dataset_id ,
-        TABLE_ID = temp_source_tbl
+            #creating new tables
+            source_table_id = file_name[:20] + '_src'
+            target_table_id = file_name[:20] + '_tgt'
+            temp_source_tbl = create_bigquery_tables(source_table_id,dataset_id)
+            temp_result_tbl = create_bigquery_tables(target_table_id, dataset_id)
+            # bigquery_file_name, source_table_name , target_table_name , dataset_id ,
+            TABLE_ID = temp_source_tbl
 
-        #create the database object 
-        BigqueryInfo.objects.create(bigquery_file_name=file_name, 
-        dataset_name=dataset_id,source_table_id=temp_source_tbl,target_table_id=temp_result_tbl)
+            #create the database object 
+            BigqueryInfo.objects.create(bigquery_file_name=file_name, 
+            dataset_name=dataset_id,source_table_id=temp_source_tbl,target_table_id=temp_result_tbl)
 
 
 
-        table_id = TABLE_ID
-        job_config = bigquery.LoadJobConfig(
-            source_format=bigquery.SourceFormat.CSV, skip_leading_rows=1, autodetect=True,
-        )
-
-        with open(file_path, "rb") as source_file:
-            job = client.load_table_from_file(source_file, table_id, job_config=job_config)
-
-        job.result()  # Waits for the job to complete.
-        table = client.get_table(table_id)  # Make an API request.
-        
-        msg = "Loaded {} rows and {} columns to {}".format(
-                table.num_rows, len(table.schema), table_id
+            table_id = TABLE_ID
+            job_config = bigquery.LoadJobConfig(
+                source_format=bigquery.SourceFormat.CSV, skip_leading_rows=1, autodetect=True,
             )
+
+            with open(file_path, "rb") as source_file:
+                job = client.load_table_from_file(source_file, table_id, job_config=job_config)
+
+            job.result()  # Waits for the job to complete.
+            table = client.get_table(table_id)  # Make an API request.
+            
+            msg = "Loaded {} rows and {} columns to {}".format(
+                    table.num_rows, len(table.schema), table_id
+                )
+        except Exception as e:
+            return render(request, "upload.html", {"error": True,"message":str(e)[:500]})
         return render(request, "upload.html", {"success": True,"message":msg})
     else:
         return render(request, "upload.html")

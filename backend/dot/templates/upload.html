@@ -8,6 +8,10 @@
 <p class="bg-success">File uploaded successfully!</p>
 <p>{{message}}</p>
 {% endif %}
+{% if error %}
+<p class="bg-danger">unexpected error occurred</p>
+<p>{{message}}</p>
+{% endif %}
 <div class="p-3 d-flex align-items-center">
 <div>choose a .csv file to upload</div>
 <form action="" method="post" enctype="multipart/form-data">
