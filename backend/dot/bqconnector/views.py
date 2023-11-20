@@ -154,6 +154,7 @@ def create_data_scan(client: dataplex_v1.DataScanServiceClient,
                 dq_rule.range_expectation.max_value = rule['dq_check_properties']['max_value'] 
         else:
             print('Incorrect Rule type')
+            continue
         data_scan.data_quality_spec.rules.append(dq_rule)
     
     # data_scan.data_quality_spec.post_scan_actions = PostScanActions()
