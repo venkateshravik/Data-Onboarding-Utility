@@ -1,5 +1,12 @@
 {% include 'home.html' %}
 
+{% if message %}
+<div class="card shadow-lg w-25 my-3">
+    <div class="card-header">Jobs</div>
+            <div>{{message}}</div>
+</div>
+{% else %}
+
 <div class="container align-items-center">
     <div class="card shadow-lg w-25 my-3">
         <div class="card-header">Data Scan Job Name</div>
@@ -26,4 +33,6 @@
 
 
 </div>
+
+{% endif %}
 
