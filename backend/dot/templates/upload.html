@@ -1,20 +1,34 @@
 {% include 'home.html' %}
 
+<div class="container">
+        <div class="card">
+            <div class="card-body">
+                {% if error %}
+                <div class="alert alert-danger" role="alert">
+                    An error has been detected. Please examine the potential occurrence of duplicate file uploads.
+                </div>
+                {% endif %}    
+                
+                <form action="" method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    
+                <div class="row">
+                    <div class="col-md-11">
+                        <label class="form-label" for="customFile">Please select the csv file to upload</label>
+                        <input type="file" class="form-control" name="csv_file" accept=".csv" id="customFile" />
+                    </div>
+                    <!-- Vertical Align flex-end -->
+                    <div class="col-md-1 d-flex align-items-end">
+                        <button class="btn btn-primary" type="submit" value="Upload">Upload</button>
+                    </div>
+                </div>
+            </form>
 
-
-{% if success %}
-<p class="bg-success">File uploaded successfully!</p>
-<p>{{message}}</p>
-{% endif %}
-{% if error %}
-<p class="bg-danger">unexpected error occurred</p>
-<p>File already exist , upload a different file</p>
-{% endif %}
-<div class="p-3 d-flex align-items-center">
-<div>choose a .csv file to upload</div>
-<form action="" method="post" enctype="multipart/form-data">
-{% csrf_token %}
-<input class="btn"type="file" name="csv_file" accept=".csv">
-<input class="btn btn-warning" type="submit" value="Upload">
-</form>
+            </div>
+        </div>
+        <div class="row  mt-4 d-flex flex-column align-items-end">
+            <div class="col-md-2">
+                <a class="btn btn-outline-secondary" href="/ingest">Open Last Ingest Table</a>
+            </div>
+        </div>
 </div>
