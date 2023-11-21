@@ -105,13 +105,16 @@ LOGIN_REDIRECT_URL = '/'
 #     }
 # }
 
+# Get HOST value from environment variable or 'localhost' as a default
+DB_HOST = os.environ.get('DB_HOST', 'localhost')
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
         'NAME': 'dotproject',
         'USER': 'dotprojectuser',
         'PASSWORD': 'dotuser@5478',
-        'HOST': 'localhost',
+        'HOST': DB_HOST,
         'PORT': '',
     }
 }
@@ -151,8 +154,10 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = 'static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'static/')
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
+
+# STATIC_ROOT = os.path.join(BASE_DIR, 'static/')
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
 
 # Default primary key field type
@@ -185,3 +190,5 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8000",
     "http://127.0.0.1:5500",
 ]
+
+CSRF_TRUSTED_ORIGINS = ['https://*.run.app','https://*.127.0.0.1']

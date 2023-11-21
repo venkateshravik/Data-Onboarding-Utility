@@ -1,0 +1,34 @@
+*{
+    margin:0;
+    padding:0;
+    /* box-sizing:border-box; */
+}
+
+/* Optional: Add some spacing and styling */
+body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 90vh;
+    margin: 0;
+    background-color: #f8f9fa;
+}
+
+.login p:nth-child(2) label, .login p:nth-child(2) input {
+    min-width: 100%;
+}
+
+.login p:nth-child(3) label, .login p:nth-child(3) input {
+    min-width: 100%;
+}
+
+#id_login, 
+#id_password {
+    font-size: 1rem;
+    line-height: 1em;
+    padding: 0.5rem;
+}
+
+li {
+    list-style-type: none;
+}

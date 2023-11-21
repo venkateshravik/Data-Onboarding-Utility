@@ -1,0 +1,28 @@
+version: '3'
+
+services:
+  # Django application
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    volumes:
+      - .:/app
+    environment:
+      - DB_HOST=db
+      - DB_NAME=dotproject
+      - DB_USER=dotprojectuser
+      - DB_PASSWORD=dotuser@5478
+      - DB_PORT=5432
+
+  # PostgreSQL database
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: dotproject
+      POSTGRES_USER: dotprojectuser
+      POSTGRES_PASSWORD: dotuser@5478
