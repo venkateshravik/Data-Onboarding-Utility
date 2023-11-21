@@ -1,10 +1,11 @@
 from django.shortcuts import render
+from django.core.exceptions import ObjectDoesNotExist
 from django.http import JsonResponse, HttpResponse , HttpResponseRedirect
 from django.contrib.auth.decorators import login_required
 from google.cloud import bigquery
 from django.conf import settings
 from django.urls import reverse
-from bqconnector.models import JobIdStore , BigqueryInfo
+from bqconnector.models import JobIdStore , BigqueryInfo 
 import os
 import csv
 import json
@@ -106,7 +107,8 @@ def upload_csv(request):
                 )
         except Exception as e:
             return render(request, "upload.html", {"error": True,"message":str(e)[:500]})
-        return render(request, "upload.html", {"success": True,"message":msg})
+        # return render(request, "upload.html", {"success": True,"message":msg})
+        return HttpResponseRedirect('/ingest')
     else:
         return render(request, "upload.html")
 
@@ -349,16 +351,21 @@ def ingest_form(request):
 def dataplex_job_status(request):
     client = dataplex_v1.DataScanServiceClient()
     status = "PENDING"
-    temp = JobIdStore.objects.last().name or ""
-    job = client.get_data_scan_job(
-        name=  temp
-    )
-    stats = {
-        "scan_job_name": job.name,
-        "start_time":job.start_time,
-        "end_time":job.end_time,
-        "state":job.state,
-        "res":str(job)[-37:]
-    }
-    print(job.state)
+    try:
+        temp = JobIdStore.objects.last().name or ""
+        job = client.get_data_scan_job(
+            name=  temp
+        )
+        stats = {
+            "scan_job_name": job.name,
+            "start_time":job.start_time,
+            "end_time":job.end_time,
+            "state":job.state,
+            "res":str(job)[-37:]
+        }
+        print(job.state)
+    except ObjectDoesNotExist :
+        return render(request,"dataplexJobStatus.html",{"message":"No Jobs Found"})
+    except Exception as e :
+        return render(request,"dataplexJobStatus.html",{"message":"No Jobs Found"})
     return render(request,"dataplexJobStatus.html",{"status":stats})
