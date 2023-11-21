@@ -1,6 +1,7 @@
 {% load static %}
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -9,23 +10,61 @@
     {% load bootstrap5 %}
     {% bootstrap_css %}
     {% bootstrap_javascript %}
-    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 90vh;
+            margin: 0;
+            background-color: #f8f9fa;
+        }
+
+        .login p:nth-child(2) label,
+        .login p:nth-child(2) input {
+            min-width: 100%;
+        }
+
+        .login p:nth-child(3) label,
+        .login p:nth-child(3) input {
+            min-width: 100%;
+        }
+
+        #id_login,
+        #id_password {
+            font-size: 1rem;
+            line-height: 1em;
+            padding: 0.5rem;
+        }
+
+        li {
+            list-style-type: none;
+        }
+    </style>
 </head>
+
 <body>
     <main>
         {% if messages %}
-            <div>
-                <ul>
+        <div>
+            <ul>
                 {% for message in messages %}
-                    <li>{{message}}</li>
+                <li>{{message}}</li>
                 {% endfor %}
-                </ul>
-            </div>
+            </ul>
+        </div>
         {% endif %}
-        
+
         {% block content %}
-        
+
         {% endblock content %}
     </main>
 </body>
+
 </html>
