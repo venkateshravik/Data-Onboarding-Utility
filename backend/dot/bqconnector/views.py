@@ -233,12 +233,14 @@ def execute(rules_config: list, project_id: str, dataset: str, source_table_name
     return job_response.job.name
 
 
-def create_valid_rows_table(DQ_JOB_ID,SOURCE_DATASET_NAME,SOURCE_TABLE_NAME,DQ_JOB_METADATA_DATASET_NAME, \
-                            DQ_JOB_METADATA_TABLE_NAME,DESTINATION_DATASET_NAME,DESTINATION_TABLE_NAME):
-    PROJECT_ID = "pso-rn-playground"
+def create_valid_rows_table(DQ_JOB_ID, DATAPLEX_JOB_METADATA_TABLE_ID):
+    
     bq_client = bigquery.Client()
+    DATASET = BigqueryInfo.objects.last().dataset_name
+    SOURCE_TABLE_NAME = BigqueryInfo.objects.last().source_table_id
+    DESTINATION_TABLE_NAME = BigqueryInfo.objects.last().target_table_id
 
-    DQ_JOB_METADATA_TABLE_REF = PROJECT_ID + "." + DQ_JOB_METADATA_DATASET_NAME + "." + DQ_JOB_METADATA_TABLE_NAME
+    DQ_JOB_METADATA_TABLE_REF = PROJECT_ID + "." + DATASET + "." + DATAPLEX_JOB_METADATA_TABLE_ID
 
     # Query a BigQuery table.
     query = """
@@ -261,13 +263,13 @@ def create_valid_rows_table(DQ_JOB_ID,SOURCE_DATASET_NAME,SOURCE_TABLE_NAME,DQ_J
             else:
                 union_all_query_string += "\n UNION ALL \n" + str(row[0]).replace(';','')
 
-    source_table_reference = PROJECT_ID + "." + SOURCE_DATASET_NAME + "." + SOURCE_TABLE_NAME
+    source_table_reference = PROJECT_ID + "." + DATASET + "." + SOURCE_TABLE_NAME
     query_for_valid_rows = """select * EXCEPT(id) from `"""+source_table_reference+"""` where id not in
     (select distinct(temp.id) from ("""+ union_all_query_string + """) temp) """
     print(query_for_valid_rows)
 
     # Set the destination for the results.
-    FINAL_RESULT_TABLE_REF = PROJECT_ID + "." + DESTINATION_DATASET_NAME + "." + DESTINATION_TABLE_NAME
+    FINAL_RESULT_TABLE_REF = PROJECT_ID + "." + DATASET + "." + DESTINATION_TABLE_NAME
     job_config = bigquery.QueryJobConfig(destination=FINAL_RESULT_TABLE_REF, write_disposition = "WRITE_TRUNCATE")
 
     query_job = bq_client.query(query_for_valid_rows, job_config=job_config)
@@ -276,7 +278,7 @@ def create_valid_rows_table(DQ_JOB_ID,SOURCE_DATASET_NAME,SOURCE_TABLE_NAME,DQ_J
     query_job.result()
 
 
-def trigger_final_table_insertion(data_scan_name: str):
+def trigger_final_table_insertion(data_scan_name: str, dataplex_job_metadata_table: str):
     client = dataplex_v1.DataScanServiceClient()
     status = "PENDING"
     # Get the data scan job object.
@@ -288,7 +290,7 @@ def trigger_final_table_insertion(data_scan_name: str):
         sleep(5)
         status = str(job.state)[6:]
     job_id = data_scan_name.split("/")[-1]
-    create_valid_rows_table(job_id, 'user_config','user_config', 'user_config','dq_result_user_config', 'user_config', 'user_config_new' )   
+    create_valid_rows_table(job_id, dataplex_job_metadata_table)   
     return status
 
 #############################################################
@@ -412,7 +414,7 @@ def ingest_form(request):
         DATASET = BigqueryInfo.objects.last().dataset_name 
         DATAPLEX_JOB_METADATA_TABLE_ID= "dataplex_job_metadata"
         JOB_NAME = execute(rules, PROJECT_ID, DATASET, SOURCE_TABLE_NAME, DATAPLEX_JOB_METADATA_TABLE_ID,LOCATION)
-        thread = threading.Thread(target=trigger_final_table_insertion, args=(JOB_NAME,))
+        thread = threading.Thread(target=trigger_final_table_insertion, args=(JOB_NAME, DATAPLEX_JOB_METADATA_TABLE_ID, ))
         thread.start()
         JobIdStore.objects.create(name = JOB_NAME)
         return JsonResponse({'msg':'success','job_name':JOB_NAME})
