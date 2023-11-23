@@ -9,6 +9,7 @@ from bqconnector.models import JobIdStore , BigqueryInfo
 import os
 import csv
 import json
+import threading
 
 #dq scan 
 from google.cloud import dataplex_v1
@@ -55,6 +56,22 @@ def create_bigquery_tables(table_id, dataset_id):
     return client.create_table(table)
 
 
+def add_primary_key(SOURCE_DATASET_NAME, SOURCE_TABLE_NAME):
+    client = bigquery.Client(project = PROJECT_ID)
+    SOURCE_TABLE_REF = PROJECT_ID + "." + SOURCE_DATASET_NAME + "." + SOURCE_TABLE_NAME
+    query_to_add_PK = """
+    SELECT
+    ROW_NUMBER() OVER () AS id,
+    A.*
+    FROM
+    `"""+SOURCE_TABLE_REF+"""` A ; """
+
+    job_config = bigquery.QueryJobConfig(destination=SOURCE_TABLE_REF, write_disposition = "WRITE_TRUNCATE")
+    query_job = client.query(query_to_add_PK, job_config=job_config)
+
+    # Wait for the query to finish.
+    query_job.result()
+    return
 
 
 @login_required
@@ -102,9 +119,12 @@ def upload_csv(request):
             job.result()  # Waits for the job to complete.
             table = client.get_table(table_id)  # Make an API request.
             
-            msg = "Loaded {} rows and {} columns to {}".format(
-                    table.num_rows, len(table.schema), table_id
-                )
+            msg = "Loaded {} rows and {} columns from file to {}. \nAdded row number for validation transparency".format(
+                table.num_rows, len(table.schema), table_id
+            )
+        
+            #Add primary key in place to the table
+            add_primary_key(dataset_id, TABLE_ID)
         except Exception as e:
             return render(request, "upload.html", {"error": True,"message":str(e)[:500]})
         # return render(request, "upload.html", {"success": True,"message":msg})
@@ -179,14 +199,10 @@ def create_data_scan(client: dataplex_v1.DataScanServiceClient,
     return data_scan_obj
 
 
-
-
-
 def get_data_scan_unique_name(table_name):
     regex = re.compile(r"[^a-zA-Z0-9-]")
     table_name_wo_spcl_char = regex.sub("-", table_name)
     return f"dq-check-{table_name_wo_spcl_char.lower()}"
-    
 
 
 def execute(rules_config: list, project_id: str, dataset: str, source_table_name: str, results_table_name: str, locations:str = "us-central1"):
@@ -217,6 +233,66 @@ def execute(rules_config: list, project_id: str, dataset: str, source_table_name
     return job_response.job.name
 
 
+def create_valid_rows_table(DQ_JOB_ID, DATAPLEX_JOB_METADATA_TABLE_ID):
+    
+    bq_client = bigquery.Client()
+    DATASET = BigqueryInfo.objects.last().dataset_name
+    SOURCE_TABLE_NAME = BigqueryInfo.objects.last().source_table_id
+    DESTINATION_TABLE_NAME = BigqueryInfo.objects.last().target_table_id
+
+    DQ_JOB_METADATA_TABLE_REF = PROJECT_ID + "." + DATASET + "." + DATAPLEX_JOB_METADATA_TABLE_ID
+
+    # Query a BigQuery table.
+    query = """
+    SELECT rule_failed_records_query FROM `"""+DQ_JOB_METADATA_TABLE_REF+"""` WHERE data_quality_job_id = '"""+DQ_JOB_ID+"""'
+    and rule_passed = false
+    """
+    print(query)
+    # Run the query.
+    query_job = bq_client.query(query)
+
+    # Wait for the query to finish.
+    result = query_job.result()
+
+    union_all_query_string=""
+
+    if result.total_rows > 0:
+        for row in result:
+            if union_all_query_string=="":
+                union_all_query_string = str(row[0]).replace(';','')
+            else:
+                union_all_query_string += "\n UNION ALL \n" + str(row[0]).replace(';','')
+
+    source_table_reference = PROJECT_ID + "." + DATASET + "." + SOURCE_TABLE_NAME
+    query_for_valid_rows = """select * EXCEPT(id) from `"""+source_table_reference+"""` where id not in
+    (select distinct(temp.id) from ("""+ union_all_query_string + """) temp) """
+    print(query_for_valid_rows)
+
+    # Set the destination for the results.
+    FINAL_RESULT_TABLE_REF = PROJECT_ID + "." + DATASET + "." + DESTINATION_TABLE_NAME
+    job_config = bigquery.QueryJobConfig(destination=FINAL_RESULT_TABLE_REF, write_disposition = "WRITE_TRUNCATE")
+
+    query_job = bq_client.query(query_for_valid_rows, job_config=job_config)
+
+    # Wait for the query to finish.
+    query_job.result()
+
+
+def trigger_final_table_insertion(data_scan_name: str, dataplex_job_metadata_table: str):
+    client = dataplex_v1.DataScanServiceClient()
+    status = "PENDING"
+    # Get the data scan job object.
+    while status.upper() in ("PENDING","RUNNING"):
+        job = client.get_data_scan_job(
+            name=data_scan_name
+        )
+        print(job.state)
+        sleep(5)
+        status = str(job.state)[6:]
+    job_id = data_scan_name.split("/")[-1]
+    create_valid_rows_table(job_id, dataplex_job_metadata_table)   
+    return status
+
 #############################################################
 
 def get_table_data(request):
@@ -228,8 +304,6 @@ def get_table_data(request):
     return render(request, "ingest.html", {"success": True,"table":schema,"table_len":range(table_len)})
 
 
-
-
 def get_col_name_for_ingest_form():
     client = bigquery.Client()
     table_id = BigqueryInfo.objects.last().source_table_id
@@ -238,6 +312,7 @@ def get_col_name_for_ingest_form():
     for schema_field in table.schema:
         column_names.append(schema_field.name)
     return column_names 
+
 
 def get_rules_config(rules_config_list,col_name):
     rules = []
@@ -315,8 +390,6 @@ def update_default_value_and_description(description_list,default_list):
     pass
 
 
-
-
 @login_required
 def ingest_form(request):
     jsonStr = request.body.decode("utf-8")
@@ -341,6 +414,8 @@ def ingest_form(request):
         DATASET = BigqueryInfo.objects.last().dataset_name 
         DATAPLEX_JOB_METADATA_TABLE_ID= "dataplex_job_metadata"
         JOB_NAME = execute(rules, PROJECT_ID, DATASET, SOURCE_TABLE_NAME, DATAPLEX_JOB_METADATA_TABLE_ID,LOCATION)
+        thread = threading.Thread(target=trigger_final_table_insertion, args=(JOB_NAME, DATAPLEX_JOB_METADATA_TABLE_ID, ))
+        thread.start()
         JobIdStore.objects.create(name = JOB_NAME)
         return JsonResponse({'msg':'success','job_name':JOB_NAME})
     except Exception as e:
