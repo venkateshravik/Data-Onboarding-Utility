@@ -124,7 +124,7 @@ def upload_csv(request):
             )
         
             #Add primary key in place to the table
-            add_primary_key(dataset_id, TABLE_ID)
+            add_primary_key(dataset_id, source_table_id)
         except Exception as e:
             return render(request, "upload.html", {"error": True,"message":str(e)[:500]})
         # return render(request, "upload.html", {"success": True,"message":msg})
