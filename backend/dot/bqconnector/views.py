@@ -262,10 +262,13 @@ def create_valid_rows_table(DQ_JOB_ID, DATAPLEX_JOB_METADATA_TABLE_ID):
                 union_all_query_string = str(row[0]).replace(';','')
             else:
                 union_all_query_string += "\n UNION ALL \n" + str(row[0]).replace(';','')
-
-    source_table_reference = PROJECT_ID + "." + DATASET + "." + SOURCE_TABLE_NAME
-    query_for_valid_rows = """select * EXCEPT(id) from `"""+source_table_reference+"""` where id not in
+    if union_all_query_string.strip():
+        remove_invalid_rows_query = """ where id not in
     (select distinct(temp.id) from ("""+ union_all_query_string + """) temp) """
+    else:
+        remove_invalid_rows_query = ""
+    source_table_reference = PROJECT_ID + "." + DATASET + "." + SOURCE_TABLE_NAME
+    query_for_valid_rows = """select * EXCEPT(id) from `"""+source_table_reference+"""`""" + remove_invalid_rows_query
     print(query_for_valid_rows)
 
     # Set the destination for the results.
