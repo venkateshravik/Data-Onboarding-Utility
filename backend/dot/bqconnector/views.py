@@ -57,7 +57,7 @@ def create_bigquery_tables(table_id, dataset_id):
 
 
 def add_primary_key(SOURCE_DATASET_NAME, SOURCE_TABLE_NAME):
-    client = bigquery.Client(project = PROJECT_ID)
+    client = bigquery.Client()
     SOURCE_TABLE_REF = PROJECT_ID + "." + SOURCE_DATASET_NAME + "." + SOURCE_TABLE_NAME
     query_to_add_PK = """
     SELECT
