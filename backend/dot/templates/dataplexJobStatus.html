@@ -30,9 +30,17 @@
         </div>
     
     </div>
-
-
 </div>
+<!-- <div>Last 5 Jobs run by {{request.user.username}}:</div><br>
+{% for job in status.job_list %}
+<ul class="list-group">
+    <li class="list-group-item active" aria-current="true">{{ forloop.counter }}.Job Name: {{job.name}}</li>
+    <li class="list-group-item">Job_start_time: {{job.job_start_time}}</li>
+    <li class="list-group-item">Job_end_time: {{job.job_end_time}}</li>
+    <li class="list-group-item">Job_status: {{job.job_status}}</li>
+  </ul>
+{% endfor %} -->
+
 
 {% endif %}
 
