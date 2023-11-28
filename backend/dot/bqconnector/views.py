@@ -82,6 +82,7 @@ def upload_csv(request):
         file = request.FILES['csv_file']
         file_name = (file.name).split('.')[0]
         file_path = os.path.join(settings.MEDIA_ROOT, file.name)
+        user = request.user
 
         with open(file_path, "wb") as f:
             f.write(file.file.read())
@@ -104,7 +105,7 @@ def upload_csv(request):
 
             #create the database object 
             BigqueryInfo.objects.create(bigquery_file_name=file_name, 
-            dataset_name=dataset_id,source_table_id=temp_source_tbl,target_table_id=temp_result_tbl)
+            dataset_name=dataset_id,source_table_id=temp_source_tbl,target_table_id=temp_result_tbl,user=user)
 
 
 
@@ -124,10 +125,9 @@ def upload_csv(request):
             )
         
             #Add primary key in place to the table
-            add_primary_key(dataset_id, TABLE_ID)
+            add_primary_key(dataset_id, source_table_id)
         except Exception as e:
             return render(request, "upload.html", {"error": True,"message":str(e)[:500]})
-        # return render(request, "upload.html", {"success": True,"message":msg})
         return HttpResponseRedirect('/ingest')
     else:
         return render(request, "upload.html")
@@ -175,7 +175,7 @@ def create_data_scan(client: dataplex_v1.DataScanServiceClient,
             if 'max_value' in rule['dq_check_properties']:
                 dq_rule.range_expectation.max_value = rule['dq_check_properties']['max_value'] 
         else:
-            print('Incorrect Rule type')
+            # print('Incorrect Rule type')
             continue
         data_scan.data_quality_spec.rules.append(dq_rule)
     
@@ -214,31 +214,20 @@ def execute(rules_config: list, project_id: str, dataset: str, source_table_name
         data_scan_obj = dataplex_client.get_data_scan(
         name=f"projects/{project_id}/locations/{locations}/dataScans/{data_scan_unique_name}"
         )
-        # print(f"Data scan object exists already as {data_scan_unique_name}")
-        # TO-DO update dq check config when rules are changed by the user for the source table
-        # data_scan_rules = str(data_scan_obj.data_profile_spec)
-        # print(f"data_scan_rules: {data_scan_rules}")
-        # input_rules = str(rules_config)
-        # print(f"input_rules: {input_rules}")
-        # if data_scan_rules!= input_rules:
-        #     update_data_scan(dataplex_client, data_scan_unique_name, rules_config)
     except NotFound as e:
-        # print(e)
-        # print("Not found: creating now")
         data_scan_obj = create_data_scan(dataplex_client, data_scan_unique_name, rules_config, project_id, source_table, results_table, locations)
     data_scan_name = data_scan_obj.name
-    # print(f"Triggering data scan run for the object {data_scan_unique_name}")
     job_response = dataplex_client.run_data_scan(name=data_scan_name)
-    # print(f"job creation resp: {job_response}")
     return job_response.job.name
 
 
-def create_valid_rows_table(DQ_JOB_ID, DATAPLEX_JOB_METADATA_TABLE_ID):
-    
+def create_valid_rows_table(request,DQ_JOB_ID, DATAPLEX_JOB_METADATA_TABLE_ID):
+    user = request.user
     bq_client = bigquery.Client()
-    DATASET = BigqueryInfo.objects.last().dataset_name
-    SOURCE_TABLE_NAME = BigqueryInfo.objects.last().source_table_id
-    DESTINATION_TABLE_NAME = BigqueryInfo.objects.last().target_table_id
+    bigqueryinfo_obj = BigqueryInfo.objects.filter(user=user).last()
+    DATASET = bigqueryinfo_obj.dataset_name
+    SOURCE_TABLE_NAME = bigqueryinfo_obj.source_table_id
+    DESTINATION_TABLE_NAME = bigqueryinfo_obj.target_table_id
 
     DQ_JOB_METADATA_TABLE_REF = PROJECT_ID + "." + DATASET + "." + DATAPLEX_JOB_METADATA_TABLE_ID
 
@@ -247,7 +236,7 @@ def create_valid_rows_table(DQ_JOB_ID, DATAPLEX_JOB_METADATA_TABLE_ID):
     SELECT rule_failed_records_query FROM `"""+DQ_JOB_METADATA_TABLE_REF+"""` WHERE data_quality_job_id = '"""+DQ_JOB_ID+"""'
     and rule_passed = false
     """
-    print(query)
+    # print(query)
     # Run the query.
     query_job = bq_client.query(query)
 
@@ -263,14 +252,18 @@ def create_valid_rows_table(DQ_JOB_ID, DATAPLEX_JOB_METADATA_TABLE_ID):
             else:
                 union_all_query_string += "\n UNION ALL \n" + str(row[0]).replace(';','')
 
-    source_table_reference = PROJECT_ID + "." + DATASET + "." + SOURCE_TABLE_NAME
-    query_for_valid_rows = """select * EXCEPT(id) from `"""+source_table_reference+"""` where id not in
+    # query_for_valid_rows = """select * EXCEPT(id) from `"""+SOURCE_TABLE_NAME+"""` where id not in
+    # (select distinct(temp.id) from ("""+ union_all_query_string + """) temp) """
+    if union_all_query_string.strip():
+        remove_invalid_rows_query = """ where id not in
     (select distinct(temp.id) from ("""+ union_all_query_string + """) temp) """
-    print(query_for_valid_rows)
+    else:
+        remove_invalid_rows_query = ""
+    query_for_valid_rows = """select * EXCEPT(id) from `"""+SOURCE_TABLE_NAME+"""`""" + remove_invalid_rows_query
+    # print(query_for_valid_rows)
 
     # Set the destination for the results.
-    FINAL_RESULT_TABLE_REF = PROJECT_ID + "." + DATASET + "." + DESTINATION_TABLE_NAME
-    job_config = bigquery.QueryJobConfig(destination=FINAL_RESULT_TABLE_REF, write_disposition = "WRITE_TRUNCATE")
+    job_config = bigquery.QueryJobConfig(destination=DESTINATION_TABLE_NAME, write_disposition = "WRITE_TRUNCATE")
 
     query_job = bq_client.query(query_for_valid_rows, job_config=job_config)
 
@@ -278,7 +271,7 @@ def create_valid_rows_table(DQ_JOB_ID, DATAPLEX_JOB_METADATA_TABLE_ID):
     query_job.result()
 
 
-def trigger_final_table_insertion(data_scan_name: str, dataplex_job_metadata_table: str):
+def trigger_final_table_insertion(request,data_scan_name: str, dataplex_job_metadata_table: str):
     client = dataplex_v1.DataScanServiceClient()
     status = "PENDING"
     # Get the data scan job object.
@@ -286,27 +279,34 @@ def trigger_final_table_insertion(data_scan_name: str, dataplex_job_metadata_tab
         job = client.get_data_scan_job(
             name=data_scan_name
         )
-        print(job.state)
+        # print(job.state)
         sleep(5)
         status = str(job.state)[6:]
     job_id = data_scan_name.split("/")[-1]
-    create_valid_rows_table(job_id, dataplex_job_metadata_table)   
+    create_valid_rows_table(request,job_id, dataplex_job_metadata_table)   
     return status
 
 #############################################################
 
 def get_table_data(request):
+    # try:
+    user = request.user
     client = bigquery.Client()
-    table_id = BigqueryInfo.objects.last().source_table_id
+    bigquery_info_obj = BigqueryInfo.objects.filter(user=user).last()
+    table_id = bigquery_info_obj.source_table_id
     table = client.get_table(table_id)
     schema = table.schema
     table_len = len(table.schema)
+    # except Exception as e:
+    #     return render(request, "ingest.html", {"error": True,"message":"Missing table info, Please upload a csv file"})
     return render(request, "ingest.html", {"success": True,"table":schema,"table_len":range(table_len)})
 
 
-def get_col_name_for_ingest_form():
+def get_col_name_for_ingest_form(request):
+    user = request.user
     client = bigquery.Client()
-    table_id = BigqueryInfo.objects.last().source_table_id
+    bigqueryinfo_obj = BigqueryInfo.objects.filter(user=user).last()
+    table_id = bigqueryinfo_obj.source_table_id
     table = client.get_table(table_id)
     column_names = []
     for schema_field in table.schema:
@@ -376,14 +376,16 @@ def get_rules_config(rules_config_list,col_name):
 modfied the data and feed into the source table
 '''
 #TODO
-def update_default_value_and_description(description_list,default_list):
+def update_default_value_and_description(request,description_list,default_list):
+    user = request.user
     client = bigquery.Client()
-    table_id = BigqueryInfo.objects.last().source_table_id
+    Bigqueryinfo_obj = BigqueryInfo.objects.filter(user=user).last()
+    table_id = Bigqueryinfo_obj.source_table_id
     table = client.get_table(table_id)
     column_names = []
     count = 0
     for schema_field in table.schema:
-        print(schema_field)
+        # print(schema_field)
         schema_field.description = description_list[count]
         schema_field.default_value = default_list[count]
         count = count + 1
@@ -397,29 +399,31 @@ def ingest_form(request):
     #print(result)
     description_list = result['describeInput']
     default_list = result['defaultInput']
-    # update_default_value_and_description(description_list,default_list)
+    # update_default_value_and_description(request,description_list,default_list)
     rules_config_list = result['ruleTypeInput']
     gcp_input_list = result['gcpInput']
     project_id = gcp_input_list['gcpProjectId']
-    col_name = get_col_name_for_ingest_form()
+    col_name = get_col_name_for_ingest_form(request)
     rules = get_rules_config(rules_config_list,col_name)
 
     try:
         #put the parameters in the execute block 
-        temp_source_tbl = BigqueryInfo.objects.last().source_table_id or ""
-        temp_result_tbl = BigqueryInfo.objects.last().target_table_id or ""
-        print(temp_result_tbl)
+        user = request.user
+        bigqueryinfo_obj = BigqueryInfo.objects.filter(user=user).last()
+        temp_source_tbl = bigqueryinfo_obj.source_table_id or ""
+        temp_result_tbl = bigqueryinfo_obj.target_table_id or ""
         SOURCE_TABLE_NAME = temp_source_tbl.split('.')[2]
         RESULT_TABLE_NAME = temp_result_tbl.split('.')[2]
-        DATASET = BigqueryInfo.objects.last().dataset_name 
+        DATASET = bigqueryinfo_obj.dataset_name 
         DATAPLEX_JOB_METADATA_TABLE_ID= "dataplex_job_metadata"
+        # print(DATASET)
         JOB_NAME = execute(rules, PROJECT_ID, DATASET, SOURCE_TABLE_NAME, DATAPLEX_JOB_METADATA_TABLE_ID,LOCATION)
-        thread = threading.Thread(target=trigger_final_table_insertion, args=(JOB_NAME, DATAPLEX_JOB_METADATA_TABLE_ID, ))
+        thread = threading.Thread(target=trigger_final_table_insertion, args=(request,JOB_NAME, DATAPLEX_JOB_METADATA_TABLE_ID, ))
         thread.start()
-        JobIdStore.objects.create(name = JOB_NAME)
+        JobIdStore.objects.create(name = JOB_NAME,user=user)
         return JsonResponse({'msg':'success','job_name':JOB_NAME})
     except Exception as e:
-        print(e)
+        # print(e)
         return JsonResponse({'error':str(e),'status':400})
     
 @login_required
@@ -427,20 +431,24 @@ def dataplex_job_status(request):
     client = dataplex_v1.DataScanServiceClient()
     status = "PENDING"
     try:
-        temp = JobIdStore.objects.last().name or ""
+        user = request.user
+        JobIdStore_obj = JobIdStore.objects.filter(user=user).last()
+        temp = JobIdStore_obj.name or ""
         job = client.get_data_scan_job(
             name=  temp
         )
+        # JobIdStore.objects.create_or_(name=job.name,user=user,defaults={"name" : job.name,"job_start_time":job.start_time,"job_end_time":job.end_time,"job_status":job.state})
+        # job_list = JobIdStore.objects.filter(user=user).all()[:5]
+        # print(job_list)
         stats = {
             "scan_job_name": job.name,
             "start_time":job.start_time,
             "end_time":job.end_time,
             "state":job.state,
-            "res":str(job)[-37:]
+            "res":str(job)[-37:],
+        
         }
-        print(job.state)
-    except ObjectDoesNotExist :
-        return render(request,"dataplexJobStatus.html",{"message":"No Jobs Found"})
+        
     except Exception as e :
         return render(request,"dataplexJobStatus.html",{"message":"No Jobs Found"})
     return render(request,"dataplexJobStatus.html",{"status":stats})

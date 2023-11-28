@@ -21,7 +21,7 @@
               <a class="nav-link link-light" href="/">HOME</a>
             </li> -->
             <li class="nav-item">
-              <a class="nav-link link-light" href="/upload">UPLOAD</a>
+              <a class="nav-link link-light" href="/upload">Upload</a>
             </li>
             <!-- <li class="nav-item">
               <a class="nav-link link-light" href="/ingest">INGEST</a>
@@ -34,6 +34,14 @@
             </li>
           </ul>
         </div>
+        <span class="float-right ml-2 text-white">
+          {% if user.is_authenticated %}
+             Hey, {{ user.username }}
+          {% else %}
+              <a href="{% url django.contrib.auth.login %}">Login</a>
+          {% endif %}
+          <!-- <img class="img-thumbnail rounded-circle" src="..." alt=""> -->
+      </span>
       </nav>
     <br>
 </body>

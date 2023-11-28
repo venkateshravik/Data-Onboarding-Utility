@@ -1,5 +1,8 @@
 {% include 'home.html' %}
 
+{% if error %}
+{{message}}
+{% else %}
 
 {% block content %}
 <div class="p-2">
@@ -91,6 +94,7 @@
 </form>
 </div>
 {% endblock %}
+{% endif %}
 
 <script type="text/javascript">
   const csrf_token = "{{ csrf_token }}";
