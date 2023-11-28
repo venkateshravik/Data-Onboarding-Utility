@@ -289,16 +289,16 @@ def trigger_final_table_insertion(request,data_scan_name: str, dataplex_job_meta
 #############################################################
 
 def get_table_data(request):
-    # try:
-    user = request.user
-    client = bigquery.Client()
-    bigquery_info_obj = BigqueryInfo.objects.filter(user=user).last()
-    table_id = bigquery_info_obj.source_table_id
-    table = client.get_table(table_id)
-    schema = table.schema
-    table_len = len(table.schema)
-    # except Exception as e:
-    #     return render(request, "ingest.html", {"error": True,"message":"Missing table info, Please upload a csv file"})
+    try:
+        user = request.user
+        client = bigquery.Client()
+        bigquery_info_obj = BigqueryInfo.objects.filter(user=user).last()
+        table_id = bigquery_info_obj.source_table_id
+        table = client.get_table(table_id)
+        schema = table.schema
+        table_len = len(table.schema)
+    except Exception as e:
+        return render(request, "ingest.html", {"error": True,"message":"Missing table info, Please upload a csv file"})
     return render(request, "ingest.html", {"success": True,"table":schema,"table_len":range(table_len)})
 
 
