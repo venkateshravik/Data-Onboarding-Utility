@@ -22,3 +22,14 @@ class BigqueryInfo(models.Model):
 
     def __str__(self):
         return self.bigquery_file_name
+
+class JobScanByUser(models.Model):
+    name = models.CharField(max_length=300)
+    job_start_time = models.DateTimeField(null=True)
+    job_end_time = models.DateTimeField(null=True)
+    job_status = models.IntegerField(null=True)
+    user = models.ForeignKey(User,on_delete=models.CASCADE)
+
+
+    def __str__(self):
+        return self.name

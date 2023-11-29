@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from google.cloud import bigquery
 from django.conf import settings
 from django.urls import reverse
-from bqconnector.models import JobIdStore , BigqueryInfo 
+from bqconnector.models import JobIdStore , BigqueryInfo , JobScanByUser
 import os
 import csv
 import json
@@ -18,6 +18,7 @@ from google.api_core.exceptions import NotFound
 from time import sleep
 import re
 ####
+
 
 # TABLE_ID = "gcpsubhrajyoti-test-project.dot_testing.dot_result"
 
@@ -160,10 +161,10 @@ def create_data_scan(client: dataplex_v1.DataScanServiceClient,
             dq_rule.non_null_expectation = DataQualityRule.NonNullExpectation()
         elif rule['dq_check_name'] == "set_expectation":
             dq_rule.set_expectation = DataQualityRule.SetExpectation()
-            dq_rule.set_expectations.values =  rule['dq_check_properties']['values']
+            dq_rule.set_expectation.values =  rule['dq_check_properties']['values']
         elif rule['dq_check_name'] == "regex_expectation":
             dq_rule.regex_expectation = DataQualityRule.RegexExpectation()
-            dq_rule.set_expectations.regex =  rule['dq_check_properties']['regex']
+            dq_rule.set_expectation.regex =  rule['dq_check_properties']['regex']
         elif rule['dq_check_name'] == "uniqueness_expectation":
             dq_rule.uniqueness_expectation = DataQualityRule.UniquenessExpectation()
         elif rule['dq_check_name'] == "statistic_range_expectation":
@@ -437,16 +438,18 @@ def dataplex_job_status(request):
         job = client.get_data_scan_job(
             name=  temp
         )
-        # JobIdStore.objects.create_or_(name=job.name,user=user,defaults={"name" : job.name,"job_start_time":job.start_time,"job_end_time":job.end_time,"job_status":job.state})
-        # job_list = JobIdStore.objects.filter(user=user).all()[:5]
-        # print(job_list)
+        obj , created = JobScanByUser.objects.update_or_create(name=job.name,user=user, defaults={"job_start_time":job.start_time, "job_end_time":job.end_time, "job_status":job.state})
+        job_list = JobScanByUser.objects.filter(user=user).all()[:5]
+
+
         stats = {
             "scan_job_name": job.name,
             "start_time":job.start_time,
             "end_time":job.end_time,
             "state":job.state,
             "res":str(job)[-37:],
-        
+            "job_list":job_list,
+            "project" : PROJECT_ID,
         }
         
     except Exception as e :
