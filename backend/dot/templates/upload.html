@@ -2,7 +2,7 @@
 
 <div class="container">
     <div class="card mt-4">
-        <div class="card-body">
+        <div class="card-body upload-form-body">
             {% if error %}
             <div class="alert alert-danger" role="alert">
                 An error has been detected. Please examine the potential occurrence of duplicate file uploads.
@@ -20,10 +20,19 @@
                     </div>
                     <!-- Vertical Align flex-end -->
                     <div class="col-md-1 d-flex align-items-end">
-                        <button class="btn btn-primary" type="submit" value="Upload">Upload</button>
+                        <button class="btn btn-primary w-100" type="submit" value="Upload">Upload</button>
                     </div>
                 </div>
             </form>
+            <script>
+                // Add a loding spinner to the upload button on form submit
+                const form = document.querySelector('.upload-form-body form');
+                form.addEventListener('submit', function() {
+                    const btn = document.querySelector('.upload-form-body button');
+                    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+                    btn.disabled = true;
+                });
+            </script>
         </div>
         <div class="card-footer">
             <div class="d-flex flex-column align-items-end">
