@@ -237,7 +237,7 @@ def create_valid_rows_table(request,DQ_JOB_ID, DATAPLEX_JOB_METADATA_TABLE_ID):
     SELECT rule_failed_records_query FROM `"""+DQ_JOB_METADATA_TABLE_REF+"""` WHERE data_quality_job_id = '"""+DQ_JOB_ID+"""'
     and rule_passed = false
     """
-    # print(query)
+    print(query)
     # Run the query.
     query_job = bq_client.query(query)
 
@@ -261,7 +261,7 @@ def create_valid_rows_table(request,DQ_JOB_ID, DATAPLEX_JOB_METADATA_TABLE_ID):
     else:
         remove_invalid_rows_query = ""
     query_for_valid_rows = """select * EXCEPT(id) from `"""+SOURCE_TABLE_NAME+"""`""" + remove_invalid_rows_query
-    # print(query_for_valid_rows)
+    print(query_for_valid_rows)
 
     # Set the destination for the results.
     job_config = bigquery.QueryJobConfig(destination=DESTINATION_TABLE_NAME, write_disposition = "WRITE_TRUNCATE")
@@ -281,7 +281,7 @@ def trigger_final_table_insertion(request,data_scan_name: str, dataplex_job_meta
             name=data_scan_name
         )
         # print(job.state)
-        sleep(5)
+        sleep(2)
         status = str(job.state)[6:]
     job_id = data_scan_name.split("/")[-1]
     create_valid_rows_table(request,job_id, dataplex_job_metadata_table)   
@@ -341,7 +341,8 @@ def get_rules_config(rules_config_list,col_name):
 
         elif 'set_expectation' in check_obj:
             ignore_null = check_obj['set_expectation'][0]
-            values = check_obj['set_expectation'][1]
+            t = check_obj['set_expectation'][1]
+            values = t.split(',')
             temp_rules_config_list['dq_check_name']='set_expectation'
             temp_rules_config_list['dq_check_properties'] = {"ignore_null":ignore_null,"values":values}
             temp_rules_config_list['dimension']=dimension[2]
@@ -361,8 +362,8 @@ def get_rules_config(rules_config_list,col_name):
         elif 'statistic_range_expectation' in check_obj:
             min_value = check_obj['statistic_range_expectation'][0]
             max_value = check_obj['statistic_range_expectation'][1]
-            strict_min_enabled = check_obj['strict_min_enabled'][2]
-            strict_max_enabled = check_obj['strict_max_enabled'][3]
+            strict_min_enabled = check_obj['statistic_range_expectation'][2]
+            strict_max_enabled = check_obj['statistic_range_expectation'][3]
             temp_rules_config_list['dq_check_name']='statistic_range_expectation'
             temp_rules_config_list['dq_check_properties']={'min_value':min_value,'max_value':max_value,'strict_min_enabled':strict_min_enabled,'strict_max_enabled':strict_max_enabled}
             temp_rules_config_list['dimension']=dimension[5]
@@ -406,7 +407,7 @@ def ingest_form(request):
     project_id = gcp_input_list['gcpProjectId']
     col_name = get_col_name_for_ingest_form(request)
     rules = get_rules_config(rules_config_list,col_name)
-
+    print(rules_config_list,col_name)#########################################test test
     try:
         #put the parameters in the execute block 
         user = request.user
