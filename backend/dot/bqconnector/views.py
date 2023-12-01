@@ -432,27 +432,30 @@ def ingest_form(request):
 def dataplex_job_status(request):
     client = dataplex_v1.DataScanServiceClient()
     status = "PENDING"
-    try:
-        user = request.user
-        JobIdStore_obj = JobIdStore.objects.filter(user=user).last()
-        temp = JobIdStore_obj.name or ""
-        job = client.get_data_scan_job(
-            name=  temp
-        )
-        obj , created = JobScanByUser.objects.update_or_create(name=job.name,user=user, defaults={"job_start_time":job.start_time, "job_end_time":job.end_time, "job_status":job.state})
-        job_list = JobScanByUser.objects.filter(user=user).all()[:5]
+    # try:
+    user = request.user
+    JobIdStore_obj = JobIdStore.objects.filter(user=user).last()
+    temp = JobIdStore_obj.name or ""
+    job = client.get_data_scan_job(
+        name=  temp
+    )
+    obj , created = JobScanByUser.objects.update_or_create(name=job.name,user=user, defaults={"job_start_time":job.start_time, "job_end_time":job.end_time, "job_status":job.state})
+    print(obj,created)
+    job_list = JobScanByUser.objects.filter(user=user).all()[:5]
+    print(job_list)
 
 
-        stats = {
-            "scan_job_name": job.name,
-            "start_time":job.start_time,
-            "end_time":job.end_time,
-            "state":job.state,
-            "res":str(job)[-37:],
-            "job_list":job_list,
-            "project" : PROJECT_ID,
-        }
+    stats = {
+        "scan_job_name": job.name,
+        "start_time":job.start_time,
+        "end_time":job.end_time,
+        "state":job.state,
+        "res":str(job)[-37:],
+        "job_list":job_list,
+        "project" : PROJECT_ID,
+    }
         
-    except Exception as e :
-        return render(request,"dataplexJobStatus.html",{"message":"No Jobs Found"})
+    # except Exception as e :
+    #     print(e)
+    #     return render(request,"dataplexJobStatus.html",{"message":"No Jobs Found"})
     return render(request,"dataplexJobStatus.html",{"status":stats})
