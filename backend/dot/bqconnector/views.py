@@ -281,7 +281,7 @@ def trigger_final_table_insertion(request,data_scan_name: str, dataplex_job_meta
             name=data_scan_name
         )
         # print(job.state)
-        sleep(2)
+        sleep(5)
         status = str(job.state)[6:]
     job_id = data_scan_name.split("/")[-1]
     create_valid_rows_table(request,job_id, dataplex_job_metadata_table)   
@@ -431,7 +431,7 @@ def ingest_form(request):
 @login_required
 def dataplex_job_status(request):
     client = dataplex_v1.DataScanServiceClient()
-    status = "PENDING"
+
     try:
         user = request.user
         JobIdStore_obj = JobIdStore.objects.filter(user=user).last()

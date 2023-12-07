@@ -64,16 +64,16 @@
           <td>{{job.job_end_time}}</td>
           <td>
             {% if job.job_status == 4 %}
-            <button class="bg-success text-white rounded-pill">Succeeded</button>
+            <span class="badge bg-success p-2">Success</span>
             
             {% elif job.job_status == 7 %}
-            <button class="bg-secondary text-white rounded-pill">Pending</button>
+            <span class="badge bg-secondary">Pending</span>
 
             {% elif job.job_status == 1 %}
-            <button class="bg-warning text-white rounded-pill">Running</button>
+            <span class="badge bg-warning text-white">Running</span>
 
             {%else%}
-            <button class="bg-danger text-white rounded-pill">Failed</button>
+            <span class="badge bg-danger">Failed</span>
             {%endif%}
         </td>
           <td class="actions">
