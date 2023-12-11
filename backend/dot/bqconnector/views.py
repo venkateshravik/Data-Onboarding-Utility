@@ -10,6 +10,7 @@ import os
 import csv
 import json
 import threading
+import logging
 
 #dq scan 
 from google.cloud import dataplex_v1
@@ -29,6 +30,9 @@ PROJECT_ID = "gcpsubhrajyoti-test-project"
 LOCATION = "us-central1"
 JOB_NAME = ""
 
+LOGGER = logging.getLogger()
+LOGGER.setLevel(logging.DEBUG)
+
 # Create your views here.
 @login_required
 def home_view(request):
@@ -42,12 +46,12 @@ def create_bigquery_dataset(dataset_name):
     dataset = bigquery.Dataset(dataset_id)
     dataset.location = "US"
     client.create_dataset(dataset)
+    logging.debug(f"Created dataset {dataset_name}")
 
 
 #create 3 tables stg , source , target
 def create_bigquery_tables(table_id, dataset_id):
     client = bigquery.Client(project= PROJECT_ID)
-
 
     # Create an empty table reference.
     table_ref = client.dataset(dataset_id).table(table_id)
@@ -100,14 +104,15 @@ def upload_csv(request):
             source_table_id = file_name[:20] + '_src'
             target_table_id = file_name[:20] + '_tgt'
             temp_source_tbl = create_bigquery_tables(source_table_id,dataset_id)
+            logging.debug(f"Created table {source_table_id}")
             temp_result_tbl = create_bigquery_tables(target_table_id, dataset_id)
+            logging.debug(f"Created table {target_table_id}")
             # bigquery_file_name, source_table_name , target_table_name , dataset_id ,
             TABLE_ID = temp_source_tbl
 
             #create the database object 
             BigqueryInfo.objects.create(bigquery_file_name=file_name, 
             dataset_name=dataset_id,source_table_id=temp_source_tbl,target_table_id=temp_result_tbl,user=user)
-
 
 
             table_id = TABLE_ID
@@ -119,6 +124,8 @@ def upload_csv(request):
                 job = client.load_table_from_file(source_file, table_id, job_config=job_config)
 
             job.result()  # Waits for the job to complete.
+            logging.info(f"Inserted data from csv to table {source_table_id}")
+
             table = client.get_table(table_id)  # Make an API request.
             
             msg = "Loaded {} rows and {} columns from file to {}. \nAdded row number for validation transparency".format(
@@ -127,6 +134,7 @@ def upload_csv(request):
         
             #Add primary key in place to the table
             add_primary_key(dataset_id, source_table_id)
+            logging.debug(f"Added column id in the {source_table_id} for validation and row filtering")
         except Exception as e:
             return render(request, "upload.html", {"error": True,"message":str(e)[:500]})
         return HttpResponseRedirect('/ingest')
@@ -176,7 +184,7 @@ def create_data_scan(client: dataplex_v1.DataScanServiceClient,
             if 'max_value' in rule['dq_check_properties']:
                 dq_rule.range_expectation.max_value = rule['dq_check_properties']['max_value'] 
         else:
-            # print('Incorrect Rule type')
+            logging.warn('Incorrect Rule type')
             continue
         data_scan.data_quality_spec.rules.append(dq_rule)
     
@@ -194,16 +202,18 @@ def create_data_scan(client: dataplex_v1.DataScanServiceClient,
 
     # Make the request
     operation = client.create_data_scan(request=request)
-    # print("Waiting for data scan object to be created...")
+    logging.debug("Waiting for data scan object to be created...")
     data_scan_obj = operation.result()
-    # print(data_scan_obj)
+    logging.debug("Created data scan object in Dataplex")
     return data_scan_obj
 
 
 def get_data_scan_unique_name(table_name):
     regex = re.compile(r"[^a-zA-Z0-9-]")
     table_name_wo_spcl_char = regex.sub("-", table_name)
-    return f"dq-check-{table_name_wo_spcl_char.lower()}"
+    unique_name = f"dq-check-{table_name_wo_spcl_char.lower()}"
+    logging.debug(f"Created unique name for the data scan as {unique_name}")
+    return unique_name
 
 
 def execute(rules_config: list, project_id: str, dataset: str, source_table_name: str, results_table_name: str, locations:str = "us-central1"):
@@ -216,9 +226,12 @@ def execute(rules_config: list, project_id: str, dataset: str, source_table_name
         name=f"projects/{project_id}/locations/{locations}/dataScans/{data_scan_unique_name}"
         )
     except NotFound as e:
+        logging.debug("Didn't find existing data scan object, creating new object")
         data_scan_obj = create_data_scan(dataplex_client, data_scan_unique_name, rules_config, project_id, source_table, results_table, locations)
     data_scan_name = data_scan_obj.name
+    logging.debug(f"Data scan object to run - {data_scan_name}")
     job_response = dataplex_client.run_data_scan(name=data_scan_name)
+    logging.debug(f"Data scan triggered for the object, job ID - {job_response.job.name}")
     return job_response.job.name
 
 
@@ -231,13 +244,18 @@ def create_valid_rows_table(request,DQ_JOB_ID, DATAPLEX_JOB_METADATA_TABLE_ID):
     DESTINATION_TABLE_NAME = bigqueryinfo_obj.target_table_id
 
     DQ_JOB_METADATA_TABLE_REF = PROJECT_ID + "." + DATASET + "." + DATAPLEX_JOB_METADATA_TABLE_ID
+    logging.debug(f"Parsing info for create_valid_rows_table:
+                  DATASET: {DATASET} \
+                  SOURCE_TABLE_NAME: {SOURCE_TABLE_NAME} \
+                  DESTINATION_TABLE_NAME: {DESTINATION_TABLE_NAME} \
+                  DQ_JOB_METADATA_TABLE_REF: {DQ_JOB_METADATA_TABLE_REF}  ")
 
     # Query a BigQuery table.
     query = """
     SELECT rule_failed_records_query FROM `"""+DQ_JOB_METADATA_TABLE_REF+"""` WHERE data_quality_job_id = '"""+DQ_JOB_ID+"""'
     and rule_passed = false
     """
-    print(query)
+    logging.debug(f"Query to get failed records query parsed as: {query}")
     # Run the query.
     query_job = bq_client.query(query)
 
@@ -246,6 +264,7 @@ def create_valid_rows_table(request,DQ_JOB_ID, DATAPLEX_JOB_METADATA_TABLE_ID):
 
     union_all_query_string=""
 
+    logging.debug(f"Received {result.total_rows} queries to fetch batches of failed records")
     if result.total_rows > 0:
         for row in result:
             if union_all_query_string=="":
@@ -253,15 +272,15 @@ def create_valid_rows_table(request,DQ_JOB_ID, DATAPLEX_JOB_METADATA_TABLE_ID):
             else:
                 union_all_query_string += "\n UNION ALL \n" + str(row[0]).replace(';','')
 
-    # query_for_valid_rows = """select * EXCEPT(id) from `"""+SOURCE_TABLE_NAME+"""` where id not in
-    # (select distinct(temp.id) from ("""+ union_all_query_string + """) temp) """
+
     if union_all_query_string.strip():
         remove_invalid_rows_query = """ where id not in
     (select distinct(temp.id) from ("""+ union_all_query_string + """) temp) """
     else:
         remove_invalid_rows_query = ""
+
     query_for_valid_rows = """select * EXCEPT(id) from `"""+SOURCE_TABLE_NAME+"""`""" + remove_invalid_rows_query
-    print(query_for_valid_rows)
+    logging.debug(f"Query for failed rows: {query_for_valid_rows} ")
 
     # Set the destination for the results.
     job_config = bigquery.QueryJobConfig(destination=DESTINATION_TABLE_NAME, write_disposition = "WRITE_TRUNCATE")
